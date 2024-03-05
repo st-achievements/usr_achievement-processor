@@ -1,0 +1,17 @@
+import { z } from 'zod';
+
+const DatetimeSchema = z
+  .string()
+  .trim()
+  .datetime()
+  .transform((value) => new Date(value));
+
+export const AchievementInputDto = z.object({
+  achievementId: z.number(),
+  workoutDate: DatetimeSchema,
+  userId: z.number(),
+  periodId: z.number(),
+  workoutId: z.number(),
+});
+
+export type AchievementInputDto = z.infer<typeof AchievementInputDto>;
