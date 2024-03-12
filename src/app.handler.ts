@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ach, Drizzle, usr } from '@st-achievements/database';
+import { ach, cfg, Drizzle, usr } from '@st-achievements/database';
 import {
   createPubSubHandler,
   Eventarc,
@@ -9,15 +9,16 @@ import {
 } from '@st-api/firebase';
 import dayjs, { OpUnitType } from 'dayjs';
 import { and, count, eq, gte, inArray, lte, sql, SQL, sum } from 'drizzle-orm';
+import { PgColumn } from 'drizzle-orm/pg-core';
 
+import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
 import { AchievementInputDto } from './achievement-input.dto.js';
 import {
   ACHIEVEMENT_CREATED_EVENT,
   ACHIEVEMENT_PROCESSOR_QUEUE,
 } from './app.constants.js';
 import { PlatinumService } from './platinum.service.js';
-import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
-import { PgColumn } from 'drizzle-orm/pg-core';
+import { QuantityUnitEnum } from './quantity-unit.enum.js';
 
 @Injectable()
 export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
@@ -28,6 +29,14 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
   ) {}
 
   private readonly logger = Logger.create(this);
+
+  private readonly fromQuantityUnitToSelectValueSQL = new Map<number, SQL>()
+    .set(QuantityUnitEnum.Meter, sql`sum(${usr.workout.distance}) * 1000`)
+    .set(QuantityUnitEnum.KM, sum(usr.workout.distance))
+    .set(QuantityUnitEnum.Calories, sum(usr.workout.energyBurned))
+    .set(QuantityUnitEnum.Exercise, count())
+    .set(QuantityUnitEnum.Minute, sum(usr.workout.duration))
+    .set(QuantityUnitEnum.Hour, sql`sum(${usr.workout.duration}) / 60`);
 
   async handle(
     event: PubSubEventData<typeof AchievementInputDto>,
@@ -69,6 +78,18 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       return;
     }
 
+    const period = await this.drizzle.query.cfgPeriod.findFirst({
+      where: and(
+        eq(cfg.period.id, event.data.periodId),
+        eq(cfg.period.active, true),
+      ),
+    });
+
+    if (!period) {
+      // TODO
+      throw new Error();
+    }
+
     const whereWorkouts: SQL[] = [
       eq(usr.workout.userId, event.data.userId),
       eq(usr.workout.active, true),
@@ -105,8 +126,11 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       }
     }
 
-    const select: { value: SQL<number>; by?: PgColumn } = {
-      value: sql`0`,
+    const selectValue =
+      this.fromQuantityUnitToSelectValueSQL.get(achievement.quantityUnitId) ??
+      sql`0`;
+    const select: { value: SQL<number>; by?: PgColumn | SQL } = {
+      value: selectValue.mapWith(Number),
     };
     let checkForCompleteness: (
       values: { value: number; by?: unknown }[],
@@ -137,32 +161,140 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
           values.length >= achievement.quantityNeeded;
         break;
       }
+      case 'allOf': {
+        select.by = usr.workout.workoutTypeId;
+        checkForCompleteness = (values) =>
+          values.length >= achievement.achievementWorkoutTypes.length;
+        break;
+      }
     }
 
-    switch (achievement.quantityUnitId) {
-      case 1: {
-        select.value = sql`sum(${usr.workout.distance}) * 1000`.mapWith(Number);
-        break;
-      }
-      case 2: {
-        select.value = sum(usr.workout.distance).mapWith(Number);
-        break;
-      }
-      case 3: {
-        select.value = sum(usr.workout.energyBurned).mapWith(Number);
-        break;
-      }
-      case 4: {
-        select.value = count();
-        break;
-      }
-      case 6: {
-        select.value = sum(usr.workout.duration).mapWith(Number);
-        break;
-      }
-      case 7: {
-        select.value = sql`sum(${usr.workout.duration}) / 60`.mapWith(Number);
-        break;
+    const fromFrequencyToExtract = new Map<ach.FrequencyType | null, string>()
+      .set('day', 'day')
+      .set('week', 'day')
+      .set('month', 'month');
+
+    const extractSQL = fromFrequencyToExtract.get(achievement.frequency);
+    if (extractSQL) {
+      select.by = sql`extract(${sql.raw(extractSQL)} from ${usr.workout.startedAt})`;
+    }
+
+    if (achievement.frequencyCondition === 'every') {
+      switch (achievement.periodCondition) {
+        case 'sameMonth': {
+          switch (achievement.frequency) {
+            case 'day': {
+              const endOfMonth = dayjs(event.data.workoutDate).endOf('month');
+              const allDaysOfMonth = Array.from(
+                { length: endOfMonth.get('date') },
+                (_, index) => index + 1,
+              );
+
+              checkForCompleteness = (values) => {
+                const daysCompleted = new Set(
+                  values.map((value) => Number(value.by)),
+                );
+                this.logger.info('every - sameMonth - day', {
+                  endOfMonth: endOfMonth.toDate(),
+                  allDaysOfMonth: [...allDaysOfMonth],
+                  daysCompleted: [...daysCompleted],
+                });
+                return allDaysOfMonth.every((day) => daysCompleted.has(day));
+              };
+              break;
+            }
+            case 'week': {
+              const weeks = new Set<number>();
+              const startOfMonth = dayjs(event.data.workoutDate).startOf(
+                'month',
+              );
+              const month = startOfMonth.get('month');
+              let date = startOfMonth;
+              while (date.get('month') === month) {
+                const week = date.week();
+                weeks.add(week);
+                date = date.add(1, 'day');
+              }
+              checkForCompleteness = (values) => {
+                const daysCompleted = values.map((value) =>
+                  dayjs(event.data.workoutDate).set('day', Number(value.by)),
+                );
+                this.logger.info('every - sameMonth - day', {
+                  endOfMonth: startOfMonth.toDate(),
+                  allDaysOfMonth: [...weeks],
+                  daysCompleted: [...daysCompleted],
+                });
+                return [...weeks].every((week) =>
+                  daysCompleted.some((day) => day.week() === week),
+                );
+              };
+            }
+          }
+          break;
+        }
+        case 'sameWeek': {
+          if (achievement.frequency !== 'day') {
+            break;
+          }
+          const startOfWeek = dayjs(event.data.workoutDate).startOf('week');
+          const daysOfWeek = Array.from({ length: 7 }, (_, index) =>
+            startOfWeek.add(index, 'day').get('date'),
+          );
+          checkForCompleteness = (values) => {
+            const daysCompleted = new Set(
+              values.map((value) => Number(value.by)),
+            );
+            this.logger.info('every - sameMonth - day', {
+              startOfWeek: startOfWeek.toDate(),
+              daysOfWeek: [...daysOfWeek],
+              daysCompleted: [...daysCompleted],
+            });
+            return daysOfWeek.every((day) => daysCompleted.has(day));
+          };
+          break;
+        }
+        case 'samePeriod': {
+          const endOfPeriod = dayjs(period.endAt);
+          switch (achievement.frequency) {
+            case 'day': {
+              select.by = sql`${usr.workout.startedAt}::date`.mapWith(String);
+              const allDaysOfPeriod = new Set<string>();
+              let date = dayjs(period.startAt);
+              while (date.isBefore(endOfPeriod) || date.isSame(endOfPeriod)) {
+                allDaysOfPeriod.add(date.format('YYYY-MM-DD'));
+                date = date.add(1, 'day');
+              }
+              checkForCompleteness = (values) =>
+                values.every(({ by }) => allDaysOfPeriod.has(String(by)));
+              break;
+            }
+            case 'week': {
+              select.by = sql`extract(year from ${usr.workout.startedAt}) || '-' || extract(week from ${usr.workout.startedAt})`;
+              const allWeeksOfPeriod = new Set<string>();
+              let date = dayjs(period.startAt);
+              while (date.isBefore(endOfPeriod) || date.isSame(endOfPeriod)) {
+                allWeeksOfPeriod.add(`${date.get('year')}-${date.week()}`);
+                date = date.add(1, 'day');
+              }
+              checkForCompleteness = (values) =>
+                values.every(({ by }) => allWeeksOfPeriod.has(String(by)));
+              break;
+            }
+            case 'month': {
+              select.by = sql`to_char(${usr.workout.startedAt}, 'YYYY-MM')`;
+              const allMonthsOfPeriod = new Set<string>();
+              let date = dayjs(period.startAt);
+              while (date.isBefore(endOfPeriod) || date.isSame(endOfPeriod)) {
+                allMonthsOfPeriod.add(date.format('YYYY-MM'));
+                date = date.add(1, 'day');
+              }
+              checkForCompleteness = (values) =>
+                values.every(({ by }) => allMonthsOfPeriod.has(String(by)));
+              break;
+            }
+          }
+          break;
+        }
       }
     }
 
@@ -197,7 +329,9 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       });
     }
 
-    // await this.platinumService.checkForPlatinum(event.data);
+    // TODO add achievement progress if available
+
+    await this.platinumService.checkForPlatinum(event.data);
   }
 }
 
