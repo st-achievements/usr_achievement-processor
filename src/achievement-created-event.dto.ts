@@ -4,4 +4,5 @@ export interface AchievementCreatedEventDto {
   achievedAt: string;
   achievementId: number;
   levelId: number;
+  userAchievementId: number;
 }

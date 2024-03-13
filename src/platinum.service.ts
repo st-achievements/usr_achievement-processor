@@ -3,6 +3,7 @@ import { ach, Drizzle, usr } from '@st-achievements/database';
 import { Eventarc, Logger } from '@st-api/firebase';
 import { and, count, eq, not } from 'drizzle-orm';
 
+import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
 import { AchievementInputDto } from './achievement-input.dto.js';
 import { AchievementLevelEnum } from './achievement-level.enum.js';
 import {
@@ -10,7 +11,6 @@ import {
   ACHIEVEMENT_PLATINUM_CREATED_EVENT,
 } from './app.constants.js';
 import { PLATINUM_NOT_FOUND } from './exceptions.js';
-import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
 
 @Injectable()
 export class PlatinumService {
@@ -65,6 +65,10 @@ export class PlatinumService {
         count: count(),
       })
       .from(usr.achievement)
+      .innerJoin(
+        ach.achievement,
+        eq(ach.achievement.id, usr.achievement.achAchievementId),
+      )
       .where(
         and(
           eq(usr.achievement.active, true),
@@ -99,12 +103,17 @@ export class PlatinumService {
       throw PLATINUM_NOT_FOUND();
     }
 
-    await this.drizzle.insert(usr.achievement).values({
-      userId: data.userId,
-      periodId: data.periodId,
-      achievedAt: data.workoutDate,
-      achAchievementId: platinum.id,
-    });
+    const [userAchievementCreated] = await this.drizzle
+      .insert(usr.achievement)
+      .values({
+        userId: data.userId,
+        periodId: data.periodId,
+        achievedAt: data.workoutDate,
+        achAchievementId: platinum.id,
+      })
+      .returning({
+        id: usr.achievement.id,
+      });
 
     const platinumEvent: AchievementCreatedEventDto = {
       achievedAt: data.workoutDate.toISOString(),
@@ -112,6 +121,7 @@ export class PlatinumService {
       userId: data.userId,
       achievementId: platinum.id,
       levelId: platinum.levelId,
+      userAchievementId: userAchievementCreated!.id,
     };
 
     this.logger.info('platinumEvent', { platinumEvent });

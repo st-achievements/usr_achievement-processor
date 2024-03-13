@@ -7,18 +7,36 @@ import {
   PubSubEventData,
   PubSubHandler,
 } from '@st-api/firebase';
-import dayjs, { OpUnitType } from 'dayjs';
-import { and, count, eq, gte, inArray, lte, sql, SQL, sum } from 'drizzle-orm';
-import { PgColumn } from 'drizzle-orm/pg-core';
+import { and, eq } from 'drizzle-orm';
 
 import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
 import { AchievementInputDto } from './achievement-input.dto.js';
+import { AchievementProgressDto } from './achievement-progress.dto.js';
 import {
   ACHIEVEMENT_CREATED_EVENT,
   ACHIEVEMENT_PROCESSOR_QUEUE,
+  ACHIEVEMENT_PROGRESS_CREATED_EVENT,
+  ACHIEVEMENT_PROGRESS_UPDATED_EVENT,
 } from './app.constants.js';
+import { PERIOD_NOT_FOUND } from './exceptions.js';
 import { PlatinumService } from './platinum.service.js';
-import { QuantityUnitEnum } from './quantity-unit.enum.js';
+import { QueryProcessor } from './query/query.js';
+import { FrequencyEveryDayInSameMonthOperator } from './query-operator/frequency-every-day-in-same-month.operator.js';
+import { FrequencyEveryDayInSamePeriodOperator } from './query-operator/frequency-every-day-in-same-period.operator.js';
+import { FrequencyEveryWeekInSameMonthOperator } from './query-operator/frequency-every-week-in-same-month.operator.js';
+import { InitialOperator } from './query-operator/initial.operator.js';
+import { PeriodConditionSameOperator } from './query-operator/period-condition-same.operator.js';
+import { PeriodConditionSingleOperator } from './query-operator/period-condition-single.operator.js';
+import { QuantityUnitCaloriesOperator } from './query-operator/quantity-unit-calories.operator.js';
+import { QuantityUnitExerciseOperator } from './query-operator/quantity-unit-exercise.operator.js';
+import { QuantityUnitHourOperator } from './query-operator/quantity-unit-hour.operator.js';
+import { QuantityUnitKMOperator } from './query-operator/quantity-unit-km.operator.js';
+import { QuantityUnitMeterOperator } from './query-operator/quantity-unit-meter.operator.js';
+import { QuantityUnitMinuteOperator } from './query-operator/quantity-unit-minute.operator.js';
+import { WorkoutTypeConditionAllOfOperator } from './query-operator/workout-type-condition-all-of.operator.js';
+import { WorkoutTypeConditionAnyOfOperator } from './query-operator/workout-type-condition-any-of.operator.js';
+import { WorkoutTypeConditionExclusiveAnyOfOperator } from './query-operator/workout-type-condition-exclusive-any-of.operator.js';
+import { WorkoutTypeConditionExclusiveAnyOperator } from './query-operator/workout-type-condition-exclusive-any.operator.js';
 
 @Injectable()
 export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
@@ -29,14 +47,6 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
   ) {}
 
   private readonly logger = Logger.create(this);
-
-  private readonly fromQuantityUnitToSelectValueSQL = new Map<number, SQL>()
-    .set(QuantityUnitEnum.Meter, sql`sum(${usr.workout.distance}) * 1000`)
-    .set(QuantityUnitEnum.KM, sum(usr.workout.distance))
-    .set(QuantityUnitEnum.Calories, sum(usr.workout.energyBurned))
-    .set(QuantityUnitEnum.Exercise, count())
-    .set(QuantityUnitEnum.Minute, sum(usr.workout.duration))
-    .set(QuantityUnitEnum.Hour, sql`sum(${usr.workout.duration}) / 60`);
 
   async handle(
     event: PubSubEventData<typeof AchievementInputDto>,
@@ -86,250 +96,129 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
     });
 
     if (!period) {
-      // TODO
-      throw new Error();
+      throw PERIOD_NOT_FOUND();
     }
 
-    const whereWorkouts: SQL[] = [
-      eq(usr.workout.userId, event.data.userId),
-      eq(usr.workout.active, true),
-      eq(usr.workout.periodId, event.data.periodId),
-    ];
-
-    const fromConditionToDayjsUnit = new Map<
-      ach.PeriodConditionType,
-      OpUnitType
-    >()
-      .set('sameDay', 'day')
-      .set('sameWeek', 'week')
-      .set('sameMonth', 'month');
-
-    switch (achievement.periodCondition) {
-      case 'sameDay':
-      case 'sameWeek':
-      case 'sameMonth': {
-        const unit = fromConditionToDayjsUnit.get(achievement.periodCondition);
-        if (!unit) {
-          break;
-        }
-        const startOf = dayjs(event.data.workoutDate).startOf(unit).toDate();
-        const endOf = dayjs(event.data.workoutDate).endOf(unit).toDate();
-        whereWorkouts.push(
-          gte(usr.workout.startedAt, startOf),
-          lte(usr.workout.endedAt, endOf),
-        );
-        break;
-      }
-      case 'singleSession': {
-        whereWorkouts.push(eq(usr.workout.id, event.data.workoutId));
-        break;
-      }
-    }
-
-    const selectValue =
-      this.fromQuantityUnitToSelectValueSQL.get(achievement.quantityUnitId) ??
-      sql`0`;
-    const select: { value: SQL<number>; by?: PgColumn | SQL } = {
-      value: selectValue.mapWith(Number),
-    };
-    let checkForCompleteness: (
-      values: { value: number; by?: unknown }[],
-    ) => boolean = ([value]: { value: number }[]) =>
-      (value?.value ?? Number.NEGATIVE_INFINITY) >= achievement.quantityNeeded;
-
-    switch (achievement.workoutTypeCondition) {
-      case 'exclusiveAnyOf':
-      case 'anyOf': {
-        whereWorkouts.push(
-          inArray(
-            usr.workout.workoutTypeId,
-            achievement.achievementWorkoutTypes.map(
-              (workoutType) => workoutType.workoutTypeId,
-            ),
-          ),
-        );
-        if (achievement.workoutTypeCondition === 'exclusiveAnyOf') {
-          select.by = usr.workout.workoutTypeId;
-          checkForCompleteness = (values) =>
-            values.length >= achievement.quantityNeeded;
-        }
-        break;
-      }
-      case 'exclusiveAny': {
-        select.by = usr.workout.workoutTypeId;
-        checkForCompleteness = (values) =>
-          values.length >= achievement.quantityNeeded;
-        break;
-      }
-      case 'allOf': {
-        select.by = usr.workout.workoutTypeId;
-        checkForCompleteness = (values) =>
-          values.length >= achievement.achievementWorkoutTypes.length;
-        break;
-      }
-    }
-
-    const fromFrequencyToExtract = new Map<ach.FrequencyType | null, string>()
-      .set('day', 'day')
-      .set('week', 'day')
-      .set('month', 'month');
-
-    const extractSQL = fromFrequencyToExtract.get(achievement.frequency);
-    if (extractSQL) {
-      select.by = sql`extract(${sql.raw(extractSQL)} from ${usr.workout.startedAt})`;
-    }
-
-    if (achievement.frequencyCondition === 'every') {
-      switch (achievement.periodCondition) {
-        case 'sameMonth': {
-          switch (achievement.frequency) {
-            case 'day': {
-              const endOfMonth = dayjs(event.data.workoutDate).endOf('month');
-              const allDaysOfMonth = Array.from(
-                { length: endOfMonth.get('date') },
-                (_, index) => index + 1,
-              );
-
-              checkForCompleteness = (values) => {
-                const daysCompleted = new Set(
-                  values.map((value) => Number(value.by)),
-                );
-                this.logger.info('every - sameMonth - day', {
-                  endOfMonth: endOfMonth.toDate(),
-                  allDaysOfMonth: [...allDaysOfMonth],
-                  daysCompleted: [...daysCompleted],
-                });
-                return allDaysOfMonth.every((day) => daysCompleted.has(day));
-              };
-              break;
-            }
-            case 'week': {
-              const weeks = new Set<number>();
-              const startOfMonth = dayjs(event.data.workoutDate).startOf(
-                'month',
-              );
-              const month = startOfMonth.get('month');
-              let date = startOfMonth;
-              while (date.get('month') === month) {
-                const week = date.week();
-                weeks.add(week);
-                date = date.add(1, 'day');
-              }
-              checkForCompleteness = (values) => {
-                const daysCompleted = values.map((value) =>
-                  dayjs(event.data.workoutDate).set('day', Number(value.by)),
-                );
-                this.logger.info('every - sameMonth - day', {
-                  endOfMonth: startOfMonth.toDate(),
-                  allDaysOfMonth: [...weeks],
-                  daysCompleted: [...daysCompleted],
-                });
-                return [...weeks].every((week) =>
-                  daysCompleted.some((day) => day.week() === week),
-                );
-              };
-            }
-          }
-          break;
-        }
-        case 'sameWeek': {
-          if (achievement.frequency !== 'day') {
-            break;
-          }
-          const startOfWeek = dayjs(event.data.workoutDate).startOf('week');
-          const daysOfWeek = Array.from({ length: 7 }, (_, index) =>
-            startOfWeek.add(index, 'day').get('date'),
-          );
-          checkForCompleteness = (values) => {
-            const daysCompleted = new Set(
-              values.map((value) => Number(value.by)),
-            );
-            this.logger.info('every - sameMonth - day', {
-              startOfWeek: startOfWeek.toDate(),
-              daysOfWeek: [...daysOfWeek],
-              daysCompleted: [...daysCompleted],
-            });
-            return daysOfWeek.every((day) => daysCompleted.has(day));
-          };
-          break;
-        }
-        case 'samePeriod': {
-          const endOfPeriod = dayjs(period.endAt);
-          switch (achievement.frequency) {
-            case 'day': {
-              select.by = sql`${usr.workout.startedAt}::date`.mapWith(String);
-              const allDaysOfPeriod = new Set<string>();
-              let date = dayjs(period.startAt);
-              while (date.isBefore(endOfPeriod) || date.isSame(endOfPeriod)) {
-                allDaysOfPeriod.add(date.format('YYYY-MM-DD'));
-                date = date.add(1, 'day');
-              }
-              checkForCompleteness = (values) =>
-                values.every(({ by }) => allDaysOfPeriod.has(String(by)));
-              break;
-            }
-            case 'week': {
-              select.by = sql`extract(year from ${usr.workout.startedAt}) || '-' || extract(week from ${usr.workout.startedAt})`;
-              const allWeeksOfPeriod = new Set<string>();
-              let date = dayjs(period.startAt);
-              while (date.isBefore(endOfPeriod) || date.isSame(endOfPeriod)) {
-                allWeeksOfPeriod.add(`${date.get('year')}-${date.week()}`);
-                date = date.add(1, 'day');
-              }
-              checkForCompleteness = (values) =>
-                values.every(({ by }) => allWeeksOfPeriod.has(String(by)));
-              break;
-            }
-            case 'month': {
-              select.by = sql`to_char(${usr.workout.startedAt}, 'YYYY-MM')`;
-              const allMonthsOfPeriod = new Set<string>();
-              let date = dayjs(period.startAt);
-              while (date.isBefore(endOfPeriod) || date.isSame(endOfPeriod)) {
-                allMonthsOfPeriod.add(date.format('YYYY-MM'));
-                date = date.add(1, 'day');
-              }
-              checkForCompleteness = (values) =>
-                values.every(({ by }) => allMonthsOfPeriod.has(String(by)));
-              break;
-            }
-          }
-          break;
-        }
-      }
-    }
+    const queryFilter = new QueryProcessor()
+      .pipe(
+        InitialOperator,
+        PeriodConditionSameOperator,
+        PeriodConditionSingleOperator,
+        QuantityUnitMeterOperator,
+        QuantityUnitKMOperator,
+        QuantityUnitCaloriesOperator,
+        QuantityUnitExerciseOperator,
+        QuantityUnitMinuteOperator,
+        QuantityUnitHourOperator,
+        WorkoutTypeConditionExclusiveAnyOfOperator,
+        WorkoutTypeConditionAnyOfOperator,
+        WorkoutTypeConditionExclusiveAnyOperator,
+        WorkoutTypeConditionAllOfOperator,
+        FrequencyEveryDayInSameMonthOperator,
+        FrequencyEveryWeekInSameMonthOperator,
+        FrequencyEveryDayInSamePeriodOperator,
+      )
+      .execute({
+        input: event.data,
+        achievement,
+        achievementWorkoutTypes: achievement.achievementWorkoutTypes,
+        period,
+      })
+      .get();
 
     const query = this.drizzle
-      .select(select)
+      .select(queryFilter.select)
       .from(usr.workout)
-      .where(and(...whereWorkouts));
+      .where(and(...queryFilter.where));
 
-    if (select.by) {
-      query.groupBy(select.by);
+    if (queryFilter.select.by) {
+      query.groupBy(queryFilter.select.by);
     }
 
     const values = await query.execute();
 
-    if (checkForCompleteness(values)) {
-      await this.drizzle.insert(usr.achievement).values({
-        userId: event.data.userId,
-        achAchievementId: event.data.achievementId,
-        achievedAt: event.data.workoutDate,
-        periodId: event.data.periodId,
-      });
+    if (queryFilter.isComplete(values)) {
+      const [userAchievementCreated] = await this.drizzle
+        .insert(usr.achievement)
+        .values({
+          userId: event.data.userId,
+          achAchievementId: event.data.achievementId,
+          achievedAt: event.data.workoutDate,
+          periodId: event.data.periodId,
+        })
+        .returning({
+          userAchievementId: usr.achievement.id,
+        });
       const achievementCreatedEvent: AchievementCreatedEventDto = {
         achievedAt: event.data.workoutDate.toISOString(),
         periodId: event.data.periodId,
         userId: event.data.userId,
         achievementId: event.data.achievementId,
         levelId: achievement.levelId,
+        userAchievementId: userAchievementCreated!.userAchievementId,
       };
       await this.eventarc.publish({
         type: ACHIEVEMENT_CREATED_EVENT,
         body: achievementCreatedEvent,
       });
+    } else if (achievement.hasProgressTracking) {
+      const quantity = queryFilter.getProgressQuantity(values);
+      const achievementProgress =
+        await this.drizzle.query.usrAchievementProgress.findFirst({
+          where: and(
+            eq(
+              usr.achievementProgress.achAchievementId,
+              event.data.achievementId,
+            ),
+            eq(usr.achievementProgress.userId, event.data.userId),
+            eq(usr.achievementProgress.periodId, event.data.periodId),
+            eq(usr.achievementProgress.active, true),
+          ),
+          columns: {
+            id: true,
+            quantity: true,
+          },
+        });
+      let userAchievementProgressId: number;
+      let eventType: string;
+      if (achievementProgress) {
+        userAchievementProgressId = achievementProgress.id;
+        eventType = ACHIEVEMENT_PROGRESS_UPDATED_EVENT;
+        if (achievementProgress.quantity !== quantity) {
+          await this.drizzle
+            .update(usr.achievementProgress)
+            .set({
+              quantity,
+            })
+            .where(eq(usr.achievementProgress.id, achievementProgress.id));
+        }
+      } else {
+        const [achievementProgressCreated] = await this.drizzle
+          .insert(usr.achievementProgress)
+          .values({
+            userId: event.data.userId,
+            achAchievementId: event.data.achievementId,
+            periodId: event.data.periodId,
+            quantity,
+          })
+          .returning({
+            id: usr.achievementProgress.id,
+          });
+        userAchievementProgressId = achievementProgressCreated!.id;
+        eventType = ACHIEVEMENT_PROGRESS_CREATED_EVENT;
+      }
+      const achievementProgressCreatedDto: AchievementProgressDto = {
+        userAchievementProgressId,
+        achievementId: event.data.achievementId,
+        periodId: event.data.periodId,
+        userId: event.data.userId,
+        quantity,
+      };
+      await this.eventarc.publish({
+        type: eventType,
+        body: achievementProgressCreatedDto,
+      });
     }
-
-    // TODO add achievement progress if available
 
     await this.platinumService.checkForPlatinum(event.data);
   }

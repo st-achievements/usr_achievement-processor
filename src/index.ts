@@ -12,7 +12,7 @@ const app = StFirebaseApp.create(AppModule, {
   secrets: [DATABASE_CONNECTION_STRING],
 }).addPubSub(appHandler);
 
-export const usr_workout = {
+export const usr_achievement = {
   processor: {
     events: app.getCloudEventHandlers(),
     http: app.getHttpHandler(),
