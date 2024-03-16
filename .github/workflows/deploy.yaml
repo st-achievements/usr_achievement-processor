@@ -1,0 +1,48 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - main
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ vars.GOOGLE_APPLICATION_CREDENTIALS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get package info
+        id: package
+        uses: codex-team/action-nodejs-package-info@v1.1
+      - name: Prepare Google Application Credentials
+        run: echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" | base64 --decode > "${{ vars.GOOGLE_APPLICATION_CREDENTIALS }}"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - name: Use Node.js 20
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - name: Create .npmrc
+        run: echo "${{ vars.NPMRC_CONTENT }}" > .npmrc
+      - name: Login to Google Artifact Registry
+        run: pnpx google-artifactregistry-auth --repo-config=.npmrc --credential-config=.npmrc
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Firebase CLI
+        run: pnpm install firebase-tools -g
+      - name: Select firebase project
+        run: firebase use ${{ vars.FIREBASE_PROJECT_ID }}
+      - name: Deploy
+        run: firebase deploy --non-interactive --debug --only functions:${{ steps.package.outputs.name }}
+      - name: Remove credentials file
+        if: success() || failure()
+        continue-on-error: true
+        run: |
+          rm ${{ vars.GOOGLE_APPLICATION_CREDENTIALS }}
+          rm .npmrc
+
