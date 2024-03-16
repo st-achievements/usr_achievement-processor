@@ -168,7 +168,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
         body: achievementCreatedEvent,
       });
     } else if (achievement.hasProgressTracking) {
-      const quantity = queryFilter.getProgressQuantity(values);
+      const quantity = Math.floor(queryFilter.getProgressQuantity(values));
       const achievementProgress =
         await this.drizzle.query.usrAchievementProgress.findFirst({
           where: and(
