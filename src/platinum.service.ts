@@ -21,7 +21,9 @@ export class PlatinumService {
 
   private readonly logger = Logger.create(this);
 
-  async checkForPlatinum(data: AchievementInputDto): Promise<void> {
+  async checkForPlatinum(
+    data: Omit<AchievementInputDto, 'achievementIds'>,
+  ): Promise<void> {
     const [userAchievementPlatinum] = await this.drizzle
       .select({
         userAchievementId: usr.achievement.id,

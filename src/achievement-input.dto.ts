@@ -7,7 +7,7 @@ const DatetimeSchema = z
   .transform((value) => new Date(value));
 
 export const AchievementInputDto = z.object({
-  achievementId: z.number(),
+  achievementIds: z.number().array(),
   workoutDate: DatetimeSchema,
   userId: z.number(),
   periodId: z.number(),
@@ -15,3 +15,8 @@ export const AchievementInputDto = z.object({
 });
 
 export type AchievementInputDto = z.infer<typeof AchievementInputDto>;
+
+export type AchievementInputSingleDto = Omit<
+  AchievementInputDto,
+  'achievementIds'
+> & { achievementId: number };
