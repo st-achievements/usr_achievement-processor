@@ -23,7 +23,10 @@ import { PlatinumService } from './platinum.service.js';
 import { QueryProcessor } from './query/query.js';
 import { FrequencyEveryDayInSameMonthOperator } from './query-operator/frequency-every-day-in-same-month.operator.js';
 import { FrequencyEveryDayInSamePeriodOperator } from './query-operator/frequency-every-day-in-same-period.operator.js';
+import { FrequencyEveryDayInSameWeekOperator } from './query-operator/frequency-every-day-in-same-week.operator.js';
+import { FrequencyEveryMonthInSamePeriodOperator } from './query-operator/frequency-every-month-in-same-period.operator.js';
 import { FrequencyEveryWeekInSameMonthOperator } from './query-operator/frequency-every-week-in-same-month.operator.js';
+import { FrequencyEveryWeekInSamePeriodOperator } from './query-operator/frequency-every-week-in-same-period.operator.js';
 import { InitialOperator } from './query-operator/initial.operator.js';
 import { PeriodConditionSameOperator } from './query-operator/period-condition-same.operator.js';
 import { PeriodConditionSingleOperator } from './query-operator/period-condition-single.operator.js';
@@ -117,6 +120,9 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
         FrequencyEveryDayInSameMonthOperator,
         FrequencyEveryWeekInSameMonthOperator,
         FrequencyEveryDayInSamePeriodOperator,
+        FrequencyEveryMonthInSamePeriodOperator,
+        FrequencyEveryWeekInSamePeriodOperator,
+        FrequencyEveryDayInSameWeekOperator,
       )
       .execute({
         input: event.data,

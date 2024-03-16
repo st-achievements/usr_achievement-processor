@@ -30,8 +30,8 @@ dependencies:
     specifier: ^5.1.2
     version: 5.1.2(@nestjs/common@10.3.3)(@nestjs/core@10.3.3)(reflect-metadata@0.2.1)
   '@st-achievements/database':
-    specifier: ^1.0.9
-    version: 1.0.9(@nestjs/common@10.3.3)(@nestjs/core@10.3.3)(@st-api/firebase@3.0.1)(drizzle-orm@0.30.2)(firebase-functions@4.8.0)(pg@8.11.3)
+    specifier: ^1.0.10
+    version: 1.0.10(@nestjs/common@10.3.3)(@nestjs/core@10.3.3)(@st-api/firebase@3.0.1)(drizzle-orm@0.30.2)(firebase-functions@4.8.0)(pg@8.11.3)
   '@st-api/core':
     specifier: ~4.4.1
     version: 4.4.1(@nestjs/common@10.3.3)(@nestjs/config@3.2.0)(@nestjs/core@10.3.3)(@nestjs/platform-express@10.3.3)(@nestjs/swagger@7.3.0)(@nestjs/throttler@5.1.2)(reflect-metadata@0.2.1)(zod@3.22.4)
@@ -2230,8 +2230,8 @@ packages:
       '@sinonjs/commons': 3.0.1
     dev: true
 
-  /@st-achievements/database@1.0.9(@nestjs/common@10.3.3)(@nestjs/core@10.3.3)(@st-api/firebase@3.0.1)(drizzle-orm@0.30.2)(firebase-functions@4.8.0)(pg@8.11.3):
-    resolution: {integrity: sha512-L+ldM/eA9RUh+fgUi+oWQ5REvPu6Zcl1pF5+G4yHowxh6wtE7Ij5oXv10wc+U2ZLlr5EAXItbpPrQf8qlaneBg==, tarball: https://us-central1-npm.pkg.dev/st-achievements/st-achievements/@st-achievements/database/-/@st-achievements/database-1.0.9.tgz}
+  /@st-achievements/database@1.0.10(@nestjs/common@10.3.3)(@nestjs/core@10.3.3)(@st-api/firebase@3.0.1)(drizzle-orm@0.30.2)(firebase-functions@4.8.0)(pg@8.11.3):
+    resolution: {integrity: sha512-ZrMEkDG6X4RClV9RvbXeAYFg5hI6tH0isXX7RNKwejQyGZ5LEHXdT9aFHjly2SOo3djgT4ICiHFwbUyxd0MnKw==, tarball: https://us-central1-npm.pkg.dev/st-achievements/st-achievements/@st-achievements/database/-/@st-achievements/database-1.0.10.tgz}
     engines: {node: '20'}
     peerDependencies:
       '@nestjs/common': ^10.3.0

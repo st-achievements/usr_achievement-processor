@@ -1,5 +1,5 @@
 {
-  "name": "usr_workout-processor",
+  "name": "usr_achievement-processor",
   "version": "1.0.0",
   "private": true,
   "description": "",
@@ -29,7 +29,7 @@
     "@nestjs/platform-express": "~10.3.3",
     "@nestjs/swagger": "^7.3.0",
     "@nestjs/throttler": "^5.1.2",
-    "@st-achievements/database": "^1.0.9",
+    "@st-achievements/database": "^1.0.10",
     "@st-api/core": "~4.4.1",
     "@st-api/firebase": "~3.0.1",
     "dayjs": "^1.11.10",
