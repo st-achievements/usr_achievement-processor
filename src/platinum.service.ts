@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ach, Drizzle, usr } from '@st-achievements/database';
 import { Eventarc, Logger } from '@st-api/firebase';
-import { and, count, eq, not } from 'drizzle-orm';
+import { and, count, eq, ne, sql } from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/pg-core';
 
 import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
 import { AchievementInputDto } from './achievement-input.dto.js';
@@ -20,6 +21,9 @@ export class PlatinumService {
   ) {}
 
   private readonly logger = Logger.create(this);
+
+  private readonly achievementCountLabel = 'achievement';
+  private readonly userAchievementCountLabel = 'user_achievement';
 
   async checkForPlatinum(data: AchievementInputDto): Promise<void> {
     const [userAchievementPlatinum] = await this.drizzle
@@ -51,17 +55,21 @@ export class PlatinumService {
       return;
     }
 
-    const [achievements] = await this.drizzle
-      .select({ count: count() })
+    const achievementCountQuery = this.drizzle
+      .select({
+        type: sql`${this.achievementCountLabel}`,
+        count: count(),
+      })
       .from(ach.achievement)
       .where(
         and(
-          not(eq(ach.achievement.levelId, AchievementLevelEnum.Platinum)),
+          ne(ach.achievement.levelId, AchievementLevelEnum.Platinum),
           eq(ach.achievement.active, true),
         ),
       );
-    const [userAchievements] = await this.drizzle
+    const userAchievementQuery = this.drizzle
       .select({
+        type: sql`${this.userAchievementCountLabel}`,
         count: count(),
       })
       .from(usr.achievement)
@@ -74,11 +82,21 @@ export class PlatinumService {
           eq(usr.achievement.active, true),
           eq(usr.achievement.userId, data.userId),
           eq(usr.achievement.periodId, data.periodId),
-          not(eq(ach.achievement.levelId, AchievementLevelEnum.Platinum)),
+          ne(ach.achievement.levelId, AchievementLevelEnum.Platinum),
+          eq(ach.achievement.active, true),
         ),
       );
-    const countAchievements = achievements?.count ?? 0;
-    const countUserAchievements = userAchievements?.count ?? 0;
+    const countResults = await unionAll(
+      achievementCountQuery,
+      userAchievementQuery,
+    );
+    const countAchievements =
+      countResults.find((result) => result.type === this.achievementCountLabel)
+        ?.count ?? 0;
+    const countUserAchievements =
+      countResults.find(
+        (result) => result.type === this.userAchievementCountLabel,
+      )?.count ?? 0;
     if (countUserAchievements < countAchievements) {
       this.logger.info(
         `There's still ${countAchievements - countUserAchievements} achievements ` +
