@@ -28,7 +28,6 @@ export class PlatinumService {
   async checkForPlatinum(data: AchievementInputDto): Promise<void> {
     const [userAchievementPlatinum] = await this.drizzle
       .select({
-        userAchievementId: usr.achievement.id,
         achievedAt: usr.achievement.achievedAt,
       })
       .from(usr.achievement)
