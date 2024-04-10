@@ -1,5 +1,5 @@
 import { usr } from '@st-achievements/database';
-import { sum } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import { QuantityUnitEnum } from '../quantity-unit.enum.js';
 import { QueryOperator } from '../query/query-operator.js';
@@ -13,7 +13,8 @@ export class QuantityUnitCaloriesOperator extends QueryOperator {
   }
 
   execute(query: Query): Query {
-    query.select.value = sum(usr.workout.energyBurned).mapWith(Number);
+    query.select.value =
+      sql`coalesce(sum(${usr.workout.energyBurned}), 0)`.mapWith(Number);
     return query;
   }
 }

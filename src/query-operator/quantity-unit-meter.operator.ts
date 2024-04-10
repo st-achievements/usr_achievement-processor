@@ -11,9 +11,8 @@ export class QuantityUnitMeterOperator extends QueryOperator {
   }
 
   execute(query: Query): Query {
-    query.select.value = sql`sum(${usr.workout.distance}) * 1000`.mapWith(
-      Number,
-    );
+    query.select.value =
+      sql`coalesce(sum(${usr.workout.distance}), 0) * 1000`.mapWith(Number);
     return query;
   }
 }

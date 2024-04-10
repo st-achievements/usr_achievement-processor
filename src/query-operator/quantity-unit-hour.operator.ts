@@ -11,7 +11,8 @@ export class QuantityUnitHourOperator extends QueryOperator {
   }
 
   execute(query: Query): Query {
-    query.select.value = sql`sum(${usr.workout.duration}) / 60`.mapWith(Number);
+    query.select.value =
+      sql`coalesce(sum(${usr.workout.duration}), 0) / 60`.mapWith(Number);
     return query;
   }
 }
