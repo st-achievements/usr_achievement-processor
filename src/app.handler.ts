@@ -125,7 +125,9 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
         eq(usr.achievement.active, true),
       ),
       columns: {
-        id: true,
+        userId: true,
+        periodId: true,
+        achAchievementId: true,
       },
     });
 
@@ -138,7 +140,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
         event,
       });
       const hasUserAchievement = userAchievements.some(
-        (userAchievement) => userAchievement.id === achievementId,
+        (userAchievement) => userAchievement.achAchievementId === achievementId,
       );
       if (hasUserAchievement) {
         this.logger.log(

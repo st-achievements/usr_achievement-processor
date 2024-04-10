@@ -11,10 +11,16 @@ export class LockService {
 
   private readonly collectionName = 'achievements-processor-lock';
   private readonly logger = Logger.create(this);
+  private readonly lockCache = new Set<string>();
 
   async assert(key: string): Promise<void> {
     const delayMs = randomInt(1, 100);
     await setTimeout(delayMs);
+    if (this.lockCache.has(key)) {
+      this.logger.info(`key = ${key} already locked`);
+      throw new RetryEvent();
+    }
+    this.lockCache.add(key);
     const docRef = this.firestore.collection(this.collectionName).doc(key);
     const value = await this.firestore.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(docRef);
@@ -35,6 +41,7 @@ export class LockService {
 
   async release(key: string): Promise<void> {
     this.logger.info(`releasing lock for ${key}`);
+    this.lockCache.delete(key);
     const docRef = this.firestore.collection(this.collectionName).doc(key);
     await this.firestore.runTransaction(async (transaction) => {
       transaction.delete(docRef);

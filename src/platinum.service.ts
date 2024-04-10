@@ -121,17 +121,12 @@ export class PlatinumService {
       throw PLATINUM_NOT_FOUND();
     }
 
-    const [userAchievementCreated] = await this.drizzle
-      .insert(usr.achievement)
-      .values({
-        userId: data.userId,
-        periodId: data.periodId,
-        achievedAt: data.workoutDate,
-        achAchievementId: platinum.id,
-      })
-      .returning({
-        id: usr.achievement.id,
-      });
+    await this.drizzle.insert(usr.achievement).values({
+      userId: data.userId,
+      periodId: data.periodId,
+      achievedAt: data.workoutDate,
+      achAchievementId: platinum.id,
+    });
 
     const platinumEvent: AchievementCreatedEventDto = {
       achievedAt: data.workoutDate.toISOString(),
@@ -139,7 +134,6 @@ export class PlatinumService {
       userId: data.userId,
       achievementId: platinum.id,
       levelId: platinum.levelId,
-      userAchievementId: userAchievementCreated!.id,
     };
 
     this.logger.info('platinumEvent', { platinumEvent });
