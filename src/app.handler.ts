@@ -69,28 +69,24 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
   async handle(
     event: PubSubEventData<typeof AchievementInputDto>,
   ): Promise<void> {
-    const context = String(event.data.workoutId);
-    this.logger.info(`[${context}] started`, { event });
+    this.logger.info(`started`, { event });
     const lockKey = `user_id=${event.data.userId}`;
-    this.logger.info(`[${context}] lockKey = ${lockKey}`);
-    await this.lockService.assert(lockKey, context);
+    this.logger.info(`lockKey = ${lockKey}`);
+    await this.lockService.assert(lockKey);
 
-    const [error] = await safeAsync(() => this.execute(event, context));
+    const [error] = await safeAsync(() => this.execute(event));
 
-    await this.lockService.release(lockKey, context);
+    await this.lockService.release(lockKey);
 
     if (error) {
-      this.logger.error(`[${context}] finished with error`);
+      this.logger.error(`finished with error`);
       throw error;
     }
 
-    this.logger.info(`[${context}] finished successfully`);
+    this.logger.info(`finished successfully`);
   }
 
-  private async execute(
-    event: PubSubEventData<typeof AchievementInputDto>,
-    context: string,
-  ) {
+  private async execute(event: PubSubEventData<typeof AchievementInputDto>) {
     const period = await this.drizzle.query.cfgPeriod.findFirst({
       where: and(
         eq(cfg.period.id, event.data.periodId),
@@ -98,7 +94,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       ),
     });
 
-    this.logger.info(`[${context}] period`, { period });
+    this.logger.info(`period`, { period });
 
     if (!period) {
       throw PERIOD_NOT_FOUND();
@@ -115,7 +111,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       },
     });
 
-    this.logger.info(`[${context}] achievements`, { achievements });
+    this.logger.info(`achievements`, { achievements });
 
     const userAchievements = await this.drizzle.query.usrAchievement.findMany({
       where: and(
@@ -131,20 +127,18 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       },
     });
 
-    this.logger.info(`[${context}] userAchievements`, { userAchievements });
+    this.logger.info(`userAchievements`, { userAchievements });
 
     const queries: QueryBuilder[] = [];
 
     for (const achievementId of event.data.achievementIds) {
-      this.logger.log(
-        `[${context}] started checking achievementId = ${achievementId}`,
-      );
+      this.logger.log(`started checking achievementId = ${achievementId}`);
       const hasUserAchievement = userAchievements.some(
         (userAchievement) => userAchievement.achAchievementId === achievementId,
       );
       if (hasUserAchievement) {
         this.logger.log(
-          `[${context}] achievementId = ${achievementId} ` +
+          `achievementId = ${achievementId} ` +
             `already acquired for userId = ${event.data.userId} ` +
             `on periodId = ${event.data.periodId}`,
         );
@@ -155,7 +149,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
 
       if (!achievement) {
         this.logger.warn(
-          `[${context}] achievementId = ${achievementId} does not exists or is inactive`,
+          `achievementId = ${achievementId} does not exists or is inactive`,
         );
         continue;
       }
@@ -196,14 +190,14 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       });
 
       this.logger.info(
-        `[${context}] added achievementId = ${achievement.id} to the list of processing`,
+        `added achievementId = ${achievement.id} to the list of processing`,
       );
     }
 
     const [firstQueryBuilder, ...restQueryBuilders] = queries;
 
     if (!firstQueryBuilder) {
-      this.logger.warn(`[${context}] Could not build the final query`);
+      this.logger.warn(`Could not build the final query`);
       return;
     }
 
@@ -213,11 +207,11 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       finalQuery.unionAll(this.buildQuery(queryBuilder));
     }
 
-    this.logger.info(`[${context}] final query built`);
+    this.logger.info(`final query built`);
 
     const finalResult = await finalQuery.execute();
 
-    this.logger.debug(`[${context}] finalResult`, { finalResult });
+    this.logger.debug(`finalResult`, { finalResult });
 
     const insertAchievement: InferInsertModel<typeof usr.achievement>[] = [];
     const insertProgress: InferInsertModel<typeof usr.achievementProgress>[] =
@@ -274,14 +268,14 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       }
     }
 
-    this.logger.debug(`[${context}] insertions and events`, {
+    this.logger.debug(`insertions and events`, {
       insertAchievement,
       insertProgress,
       eventsToPublish,
     });
 
     if (!insertAchievement.length && !insertProgress.length) {
-      this.logger.info(`[${context}] no achievement nor progress was made`);
+      this.logger.info(`no achievement nor progress was made`);
       return;
     }
 
@@ -309,15 +303,13 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       }
     });
 
-    this.logger.info(
-      `[${context}] All inserted/updated in the database successfully!`,
-    );
+    this.logger.info(`All inserted/updated in the database successfully!`);
 
     await this.eventarc.publish(eventsToPublish);
 
-    this.logger.info(`[${context}] Published all events!`);
+    this.logger.info(`Published all events!`);
 
-    await this.platinumService.checkForPlatinum(event.data, context);
+    await this.platinumService.checkForPlatinum(event.data);
   }
 
   private buildQuery({ queryFilter, achievement }: QueryBuilder) {
@@ -342,4 +334,15 @@ export const appHandler = createPubSubHandler({
   topic: ACHIEVEMENT_PROCESSOR_QUEUE,
   retry: true,
   preserveExternalChanges: true,
+  loggerContext: (event) => {
+    const json = event.data.message.json;
+    if (
+      json &&
+      typeof json === 'object' &&
+      'workoutId' in json &&
+      'userId' in json
+    ) {
+      return `u${json.userId}-w${json.workoutId}`;
+    }
+  },
 });

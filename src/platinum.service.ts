@@ -25,10 +25,7 @@ export class PlatinumService {
   private readonly achievementCountLabel = 'achievement';
   private readonly userAchievementCountLabel = 'user_achievement';
 
-  async checkForPlatinum(
-    data: AchievementInputDto,
-    context: string,
-  ): Promise<void> {
+  async checkForPlatinum(data: AchievementInputDto): Promise<void> {
     const [userAchievementPlatinum] = await this.drizzle
       .select({
         achievedAt: usr.achievement.achievedAt,
@@ -49,7 +46,7 @@ export class PlatinumService {
 
     if (userAchievementPlatinum) {
       this.logger.info(
-        `[${context}] Platinum already achieved for ` +
+        `Platinum already achieved for ` +
           `userId = ${data.userId} ` +
           `on periodId = ${data.periodId} ` +
           `at ${userAchievementPlatinum.achievedAt}`,
@@ -101,7 +98,7 @@ export class PlatinumService {
       )?.count ?? 0;
     if (countUserAchievements < countAchievements) {
       this.logger.info(
-        `[${context}] There's still ${countAchievements - countUserAchievements} achievements ` +
+        `There's still ${countAchievements - countUserAchievements} achievements ` +
           `for userId = ${data.userId} ` +
           `on periodId = ${data.periodId} to earn the platinum`,
       );
@@ -138,7 +135,7 @@ export class PlatinumService {
       levelId: platinum.levelId,
     };
 
-    this.logger.info(`[${context}] platinumEvent`, { platinumEvent });
+    this.logger.info(`platinumEvent`, { platinumEvent });
 
     await this.eventarc.publish([
       {

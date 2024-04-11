@@ -18,20 +18,20 @@ export class LockService {
     await setTimeout(this.delayMs++);
   }
 
-  async assert(key: string, context: string): Promise<void> {
-    this.logger.info(`[${context}] key = ${key} checking lock`);
+  async assert(key: string): Promise<void> {
+    this.logger.info(`key = ${key} checking lock`);
     await this.wait();
     const result = await this.redis.set(key, 'locked', 'EX', 10, 'NX');
     if (result !== 'OK') {
-      this.logger.info(`[${context}] key = ${key} already locked`);
+      this.logger.info(`key = ${key} already locked`);
       throw new RetryEvent();
     }
-    this.logger.info(`[${context}] key = ${key} locked`);
+    this.logger.info(`key = ${key} locked`);
   }
 
-  async release(key: string, context: string): Promise<void> {
-    this.logger.info(`[${context}] releasing lock for ${key}`);
+  async release(key: string): Promise<void> {
+    this.logger.info(`releasing lock for ${key}`);
     await this.redis.del(key);
-    this.logger.info(`[${context}] released lock for ${key}`);
+    this.logger.info(`released lock for ${key}`);
   }
 }
