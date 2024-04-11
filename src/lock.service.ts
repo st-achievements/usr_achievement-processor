@@ -1,51 +1,37 @@
-import { randomInt } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 
 import { Injectable } from '@nestjs/common';
-import { FirebaseAdminFirestore, Logger, RetryEvent } from '@st-api/firebase';
-import dayjs from 'dayjs';
+import { Logger, RetryEvent } from '@st-api/firebase';
+import { Redis } from 'ioredis';
 
 @Injectable()
 export class LockService {
-  constructor(private readonly firestore: FirebaseAdminFirestore) {}
+  constructor(private readonly redis: Redis) {}
 
-  private readonly collectionName = 'achievements-processor-lock';
   private readonly logger = Logger.create(this);
-  private readonly lockCache = new Set<string>();
+  private delayMs = 0;
 
-  async assert(key: string): Promise<void> {
-    const delayMs = randomInt(1, 100);
-    await setTimeout(delayMs);
-    if (this.lockCache.has(key)) {
-      this.logger.info(`key = ${key} already locked`);
-      throw new RetryEvent();
+  private async wait(): Promise<void> {
+    if (this.delayMs >= 100) {
+      this.delayMs = 0;
     }
-    this.lockCache.add(key);
-    const docRef = this.firestore.collection(this.collectionName).doc(key);
-    const value = await this.firestore.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(docRef);
-      if (!snapshot.exists) {
-        this.logger.info(`locking for ${key}`);
-        transaction.set(docRef, {
-          t: dayjs().add(20, 'seconds').toDate(),
-        });
-        return true;
-      }
-      return false;
-    });
-    if (!value) {
-      this.logger.info(`key = ${key} already locked`);
-      throw new RetryEvent();
-    }
+    await setTimeout(this.delayMs++);
   }
 
-  async release(key: string): Promise<void> {
-    this.logger.info(`releasing lock for ${key}`);
-    this.lockCache.delete(key);
-    const docRef = this.firestore.collection(this.collectionName).doc(key);
-    await this.firestore.runTransaction(async (transaction) => {
-      transaction.delete(docRef);
-    });
-    this.logger.info(`released lock for ${key}`);
+  async assert(key: string, context: string): Promise<void> {
+    this.logger.info(`[${context}] key = ${key} checking lock`);
+    await this.wait();
+    const result = await this.redis.set(key, 'locked', 'EX', 10, 'NX');
+    if (result !== 'OK') {
+      this.logger.info(`[${context}] key = ${key} already locked`);
+      throw new RetryEvent();
+    }
+    this.logger.info(`[${context}] key = ${key} locked`);
+  }
+
+  async release(key: string, context: string): Promise<void> {
+    this.logger.info(`[${context}] releasing lock for ${key}`);
+    await this.redis.del(key);
+    this.logger.info(`[${context}] released lock for ${key}`);
   }
 }

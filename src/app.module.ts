@@ -6,6 +6,7 @@ import { FirebaseAdminModule, PubSubModule } from '@st-api/firebase';
 import { AppHandler } from './app.handler.js';
 import { LockService } from './lock.service.js';
 import { PlatinumService } from './platinum.service.js';
+import { RedisProvider } from './redis.provider.js';
 
 @Module({
   imports: [
@@ -15,6 +16,6 @@ import { PlatinumService } from './platinum.service.js';
     PubSubModule,
   ],
   controllers: [],
-  providers: [AppHandler, PlatinumService, LockService],
+  providers: [AppHandler, PlatinumService, LockService, RedisProvider],
 })
 export class AppModule {}

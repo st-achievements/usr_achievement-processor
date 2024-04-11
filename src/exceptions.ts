@@ -14,3 +14,9 @@ export const PERIOD_NOT_FOUND = exception({
   message: 'Period not found',
   error: 'Period not found',
 });
+
+export const INVALID_REDIS_CREDENTIALS = exception({
+  errorCode: 'USR-AP-0003',
+  status: HttpStatus.INTERNAL_SERVER_ERROR,
+  message: 'Invalid Redis Credentials',
+});

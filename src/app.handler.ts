@@ -69,28 +69,28 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
   async handle(
     event: PubSubEventData<typeof AchievementInputDto>,
   ): Promise<void> {
-    this.logger.info(`workout_id = ${event.data.workoutId} started`, { event });
+    const context = String(event.data.workoutId);
+    this.logger.info(`[${context}] started`, { event });
     const lockKey = `user_id=${event.data.userId}`;
-    this.logger.info(`lockKey = ${lockKey}`);
-    await this.lockService.assert(lockKey);
+    this.logger.info(`[${context}] lockKey = ${lockKey}`);
+    await this.lockService.assert(lockKey, context);
 
-    const [error] = await safeAsync(() => this.execute(event));
+    const [error] = await safeAsync(() => this.execute(event, context));
 
-    await this.lockService.release(lockKey);
+    await this.lockService.release(lockKey, context);
 
     if (error) {
-      this.logger.error(
-        `workout_id = ${event.data.workoutId} finished with error`,
-      );
+      this.logger.error(`[${context}] finished with error`);
       throw error;
     }
 
-    this.logger.info(
-      `workout_id = ${event.data.workoutId} finished successfully`,
-    );
+    this.logger.info(`[${context}] finished successfully`);
   }
 
-  private async execute(event: PubSubEventData<typeof AchievementInputDto>) {
+  private async execute(
+    event: PubSubEventData<typeof AchievementInputDto>,
+    context: string,
+  ) {
     const period = await this.drizzle.query.cfgPeriod.findFirst({
       where: and(
         eq(cfg.period.id, event.data.periodId),
@@ -98,7 +98,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       ),
     });
 
-    this.logger.info({ period });
+    this.logger.info(`[${context}] period`, { period });
 
     if (!period) {
       throw PERIOD_NOT_FOUND();
@@ -115,7 +115,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       },
     });
 
-    this.logger.info({ achievements });
+    this.logger.info(`[${context}] achievements`, { achievements });
 
     const userAchievements = await this.drizzle.query.usrAchievement.findMany({
       where: and(
@@ -131,20 +131,20 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       },
     });
 
-    this.logger.info({ userAchievements });
+    this.logger.info(`[${context}] userAchievements`, { userAchievements });
 
     const queries: QueryBuilder[] = [];
 
     for (const achievementId of event.data.achievementIds) {
-      this.logger.log(`started checking achievementId = ${achievementId}`, {
-        event,
-      });
+      this.logger.log(
+        `[${context}] started checking achievementId = ${achievementId}`,
+      );
       const hasUserAchievement = userAchievements.some(
         (userAchievement) => userAchievement.achAchievementId === achievementId,
       );
       if (hasUserAchievement) {
         this.logger.log(
-          `achievementId = ${achievementId} ` +
+          `[${context}] achievementId = ${achievementId} ` +
             `already acquired for userId = ${event.data.userId} ` +
             `on periodId = ${event.data.periodId}`,
         );
@@ -155,7 +155,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
 
       if (!achievement) {
         this.logger.warn(
-          `achievementId = ${achievementId} does not exists or is inactive`,
+          `[${context}] achievementId = ${achievementId} does not exists or is inactive`,
         );
         continue;
       }
@@ -196,14 +196,14 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       });
 
       this.logger.info(
-        `added achievementId = ${achievement.id} to the list of processing`,
+        `[${context}] added achievementId = ${achievement.id} to the list of processing`,
       );
     }
 
     const [firstQueryBuilder, ...restQueryBuilders] = queries;
 
     if (!firstQueryBuilder) {
-      this.logger.warn('Could not build the final query');
+      this.logger.warn(`[${context}] Could not build the final query`);
       return;
     }
 
@@ -213,11 +213,11 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       finalQuery.unionAll(this.buildQuery(queryBuilder));
     }
 
-    this.logger.info('final query built');
+    this.logger.info(`[${context}] final query built`);
 
     const finalResult = await finalQuery.execute();
 
-    this.logger.debug({ finalResult });
+    this.logger.debug(`[${context}] finalResult`, { finalResult });
 
     const insertAchievement: InferInsertModel<typeof usr.achievement>[] = [];
     const insertProgress: InferInsertModel<typeof usr.achievementProgress>[] =
@@ -274,14 +274,14 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       }
     }
 
-    this.logger.debug({
+    this.logger.debug(`[${context}] insertions and events`, {
       insertAchievement,
       insertProgress,
       eventsToPublish,
     });
 
     if (!insertAchievement.length && !insertProgress.length) {
-      this.logger.info('no achievement nor progress was made');
+      this.logger.info(`[${context}] no achievement nor progress was made`);
       return;
     }
 
@@ -309,13 +309,15 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       }
     });
 
-    this.logger.info('All inserted/updated in the database successfully!');
+    this.logger.info(
+      `[${context}] All inserted/updated in the database successfully!`,
+    );
 
     await this.eventarc.publish(eventsToPublish);
 
-    this.logger.info('Published all events!');
+    this.logger.info(`[${context}] Published all events!`);
 
-    await this.platinumService.checkForPlatinum(event.data);
+    await this.platinumService.checkForPlatinum(event.data, context);
   }
 
   private buildQuery({ queryFilter, achievement }: QueryBuilder) {
