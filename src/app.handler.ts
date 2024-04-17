@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ach, cfg, Drizzle, usr } from '@st-achievements/database';
-import { safeAsync } from '@st-api/core';
+import { getCorrelationId, safeAsync } from '@st-api/core';
 import {
   createPubSubHandler,
   Eventarc,
@@ -25,7 +25,7 @@ import {
   ACHIEVEMENT_PROCESSOR_QUEUE,
   ACHIEVEMENT_PROGRESS_CREATED_EVENT,
 } from './app.constants.js';
-import { PERIOD_NOT_FOUND } from './exceptions.js';
+import { PERIOD_NOT_FOUND, WORKOUT_NOT_FOUND } from './exceptions.js';
 import { LockService } from './lock.service.js';
 import { PlatinumService } from './platinum.service.js';
 import { QueryProcessor } from './query/query.js';
@@ -87,6 +87,25 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
   }
 
   private async execute(event: PubSubEventData<typeof AchievementInputDto>) {
+    const workout = await this.drizzle.query.usrWorkout.findFirst({
+      where: and(eq(usr.workout.id, event.data.workoutId)),
+      columns: {
+        achievementProcessedAt: true,
+        metadata: true,
+      },
+    });
+
+    if (!workout) {
+      throw WORKOUT_NOT_FOUND();
+    }
+
+    if (workout.achievementProcessedAt) {
+      this.logger.info(
+        `workout_id = ${event.data.workoutId} already processed at ${workout.achievementProcessedAt.toISOString()}`,
+      );
+      return;
+    }
+
     const period = await this.drizzle.query.cfgPeriod.findFirst({
       where: and(
         eq(cfg.period.id, event.data.periodId),
@@ -227,6 +246,8 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
         }
     > = [];
 
+    const correlationId = getCorrelationId();
+
     for (const { queryFilter, achievement } of queries) {
       const values = finalResult.filter(
         (result) => result.achievementId === achievement.id,
@@ -237,6 +258,9 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
           userId: event.data.userId,
           achievedAt: event.data.workoutDate,
           periodId: event.data.periodId,
+          metadata: {
+            correlationId,
+          },
         });
         eventsToPublish.push({
           type: ACHIEVEMENT_CREATED_EVENT,
@@ -255,6 +279,9 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
           achAchievementId: achievement.id,
           periodId: event.data.periodId,
           quantity,
+          metadata: {
+            correlationId,
+          },
         });
         eventsToPublish.push({
           type: ACHIEVEMENT_PROGRESS_CREATED_EVENT,
@@ -301,13 +328,23 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
             },
           });
       }
+      await transaction
+        .update(usr.workout)
+        .set({
+          achievementProcessedAt: new Date(),
+          metadata: {
+            ...workout.metadata,
+            achievementProcessedCorrelationId: getCorrelationId(),
+          },
+        })
+        .where(eq(usr.workout.id, event.data.workoutId));
     });
 
-    this.logger.info(`All inserted/updated in the database successfully!`);
+    this.logger.info('All inserted/updated in the database successfully!');
 
     await this.eventarc.publish(eventsToPublish);
 
-    this.logger.info(`Published all events!`);
+    this.logger.info('Published all events!');
 
     await this.platinumService.checkForPlatinum(event.data);
   }

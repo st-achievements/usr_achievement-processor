@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ach, Drizzle, usr } from '@st-achievements/database';
+import { getCorrelationId } from '@st-api/core';
 import { Eventarc, Logger } from '@st-api/firebase';
 import { and, count, eq, ne, sql } from 'drizzle-orm';
 import { unionAll } from 'drizzle-orm/pg-core';
@@ -125,6 +126,9 @@ export class PlatinumService {
       periodId: data.periodId,
       achievedAt: data.workoutDate,
       achAchievementId: platinum.id,
+      metadata: {
+        correlationId: getCorrelationId(),
+      },
     });
 
     const platinumEvent: AchievementCreatedEventDto = {
