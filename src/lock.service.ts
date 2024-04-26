@@ -1,12 +1,16 @@
 import { setTimeout } from 'node:timers/promises';
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { StApiName } from '@st-api/core';
 import { Logger, RetryEvent } from '@st-api/firebase';
 import { Redis } from 'ioredis';
 
 @Injectable()
 export class LockService {
-  constructor(private readonly redis: Redis) {}
+  constructor(
+    private readonly redis: Redis,
+    @Inject(StApiName) private readonly stApiName: string,
+  ) {}
 
   private readonly logger = Logger.create(this);
   private delayMs = 0;
@@ -33,5 +37,9 @@ export class LockService {
     this.logger.info(`releasing lock for ${key}`);
     await this.redis.del(key);
     this.logger.info(`released lock for ${key}`);
+  }
+
+  createKey(userId: string): string {
+    return `${this.stApiName}-u${userId}`;
   }
 }

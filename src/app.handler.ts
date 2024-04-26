@@ -70,7 +70,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
     event: PubSubEventData<typeof AchievementInputDto>,
   ): Promise<void> {
     this.logger.info(`started`, { event });
-    const lockKey = `user_id=${event.data.userId}`;
+    const lockKey = this.lockService.createKey(String(event.data.userId));
     this.logger.info(`lockKey = ${lockKey}`);
     await this.lockService.assert(lockKey);
 

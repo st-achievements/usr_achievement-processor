@@ -1,3 +1,4 @@
+import { REDIS_CREDENTIALS } from '@st-achievements/core';
 import { DATABASE_CONNECTION_STRING } from '@st-achievements/database';
 import { StFirebaseApp } from '@st-api/firebase';
 import dayjs from 'dayjs';
@@ -5,7 +6,6 @@ import weekOfYear from 'dayjs/plugin/weekOfYear.js';
 
 import { appHandler } from './app.handler.js';
 import { AppModule } from './app.module.js';
-import { REDIS_CREDENTIALS } from './redis.provider.js';
 
 dayjs.extend(weekOfYear);
 
