@@ -1,15 +1,20 @@
 import { Module } from '@nestjs/common';
-import { RedisModule } from '@st-achievements/core';
-import { DrizzleOrmModule } from '@st-achievements/database';
+import { AchievementsCoreModule, RedisModule } from '@st-achievements/core';
 import { CoreModule } from '@st-api/core';
-import { FirebaseAdminModule } from '@st-api/firebase';
 
 import { AppHandler } from './app.handler.js';
 import { LockService } from './lock.service.js';
 import { PlatinumService } from './platinum.service.js';
 
 @Module({
-  imports: [CoreModule.forRoot(), DrizzleOrmModule, RedisModule, FirebaseAdminModule.forRoot()],
+  imports: [
+    CoreModule.forRoot(),
+    RedisModule,
+    AchievementsCoreModule.forRoot({
+      authentication: false,
+      throttling: false,
+    }),
+  ],
   controllers: [],
   providers: [AppHandler, PlatinumService, LockService],
 })

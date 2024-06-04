@@ -6,8 +6,10 @@ writeFileSync('.env', `API_KEY=\nNODE_ENV=${NodeEnvEnum.Development}`);
 
 spawn('npm', ['run', 'build:watch'], {
   stdio: 'pipe',
+  shell: true,
 });
 
 spawn('npm', ['run', 'emulators:start'], {
   stdio: 'inherit',
+  shell: true,
 });

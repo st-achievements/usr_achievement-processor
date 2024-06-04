@@ -69,6 +69,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
   async handle(
     event: PubSubEventData<typeof AchievementInputDto>,
   ): Promise<void> {
+    Logger.setContext(`u${event.data.userId}-w${event.data.workoutId}`);
     this.logger.info(`started`, { event });
     const lockKey = this.lockService.createKey(String(event.data.userId));
     this.logger.info(`lockKey = ${lockKey}`);
@@ -371,15 +372,4 @@ export const appHandler = createPubSubHandler({
   topic: ACHIEVEMENT_PROCESSOR_QUEUE,
   retry: true,
   preserveExternalChanges: true,
-  loggerContext: (event) => {
-    const json = event.data.message.json;
-    if (
-      json &&
-      typeof json === 'object' &&
-      'workoutId' in json &&
-      'userId' in json
-    ) {
-      return `u${json.userId}-w${json.workoutId}`;
-    }
-  },
 });
