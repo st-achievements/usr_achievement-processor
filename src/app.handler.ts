@@ -253,6 +253,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       const values = finalResult.filter(
         (result) => result.achievementId === achievement.id,
       );
+      const quantity = Math.floor(queryFilter.getProgressQuantity(values));
       if (queryFilter.isComplete(values)) {
         insertAchievement.push({
           achAchievementId: achievement.id,
@@ -273,8 +274,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
             levelId: achievement.levelId,
           },
         });
-      } else if (achievement.hasProgressTracking) {
-        const quantity = Math.floor(queryFilter.getProgressQuantity(values));
+      } else if (achievement.hasProgressTracking && quantity > 0) {
         insertProgress.push({
           userId: event.data.userId,
           achAchievementId: achievement.id,
