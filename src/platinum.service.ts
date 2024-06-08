@@ -27,6 +27,8 @@ export class PlatinumService {
   private readonly userAchievementCountLabel = 'user_achievement';
 
   async checkForPlatinum(data: AchievementInputDto): Promise<void> {
+    this.logger.info('Checking for platinum');
+
     const [userAchievementPlatinum] = await this.drizzle
       .select({
         achievedAt: usr.achievement.achievedAt,
@@ -139,7 +141,7 @@ export class PlatinumService {
       levelId: platinum.levelId,
     };
 
-    this.logger.info(`platinumEvent`, { platinumEvent });
+    this.logger.info('platinumEvent', { platinumEvent });
 
     await this.eventarc.publish([
       {

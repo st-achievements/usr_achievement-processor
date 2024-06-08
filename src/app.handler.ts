@@ -80,11 +80,11 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
     await this.lockService.release(lockKey);
 
     if (error) {
-      this.logger.error(`finished with error`);
+      this.logger.error(`finished with error`, { error });
       throw error;
     }
 
-    this.logger.info(`finished successfully`);
+    this.logger.info('finished successfully');
   }
 
   private async execute(event: PubSubEventData<typeof AchievementInputDto>) {
@@ -114,7 +114,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       ),
     });
 
-    this.logger.info(`period`, { period });
+    this.logger.info('period', { period });
 
     if (!period) {
       throw PERIOD_NOT_FOUND();
@@ -131,7 +131,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       },
     });
 
-    this.logger.info(`achievements`, { achievements });
+    this.logger.info('achievements', { achievements });
 
     const userAchievements = await this.drizzle.query.usrAchievement.findMany({
       where: and(
@@ -147,7 +147,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       },
     });
 
-    this.logger.info(`userAchievements`, { userAchievements });
+    this.logger.info('userAchievements', { userAchievements });
 
     const queries: QueryBuilder[] = [];
 
@@ -217,7 +217,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
     const [firstQueryBuilder, ...restQueryBuilders] = queries;
 
     if (!firstQueryBuilder) {
-      this.logger.warn(`Could not build the final query`);
+      this.logger.warn('Could not build the final query');
       return;
     }
 
@@ -227,11 +227,11 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       finalQuery.unionAll(this.buildQuery(queryBuilder));
     }
 
-    this.logger.info(`final query built`);
+    this.logger.info('final query built');
 
     const finalResult = await finalQuery.execute();
 
-    this.logger.debug(`finalResult`, { finalResult });
+    this.logger.debug('finalResult', { finalResult });
 
     const insertAchievement: InferInsertModel<typeof usr.achievement>[] = [];
     const insertProgress: InferInsertModel<typeof usr.achievementProgress>[] =
@@ -296,14 +296,14 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
       }
     }
 
-    this.logger.debug(`insertions and events`, {
+    this.logger.debug('insertions and events', {
       insertAchievement,
       insertProgress,
       eventsToPublish,
     });
 
     if (!insertAchievement.length && !insertProgress.length) {
-      this.logger.info(`no achievement nor progress was made`);
+      this.logger.info('no achievement nor progress was made');
       return;
     }
 
