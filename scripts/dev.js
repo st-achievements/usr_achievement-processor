@@ -1,8 +1,7 @@
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { NodeEnvEnum } from '@st-api/core';
 
-writeFileSync('.env', `API_KEY=\nNODE_ENV=${NodeEnvEnum.Development}`);
+writeFileSync('.env', `API_KEY=`);
 
 spawn('npm', ['run', 'build:watch'], {
   stdio: 'pipe',

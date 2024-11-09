@@ -1,8 +1,7 @@
-import { Injectable } from '@nestjs/common';
 import { ach, Drizzle, usr } from '@st-achievements/database';
 import { getCorrelationId } from '@st-api/core';
 import { Eventarc, Logger } from '@st-api/firebase';
-import { and, count, eq, ne, sql } from 'drizzle-orm';
+import { and, count, eq, isNull, ne, sql } from 'drizzle-orm';
 import { unionAll } from 'drizzle-orm/pg-core';
 
 import { AchievementCreatedEventDto } from './achievement-created-event.dto.js';
@@ -13,6 +12,7 @@ import {
   ACHIEVEMENT_PLATINUM_CREATED_EVENT,
 } from './app.constants.js';
 import { PLATINUM_NOT_FOUND } from './exceptions.js';
+import { Injectable } from '@stlmpp/di';
 
 @Injectable()
 export class PlatinumService {
@@ -40,7 +40,7 @@ export class PlatinumService {
       )
       .where(
         and(
-          eq(usr.achievement.active, true),
+          isNull(usr.achievement.inactivatedAt),
           eq(usr.achievement.userId, data.userId),
           eq(usr.achievement.periodId, data.periodId),
           eq(ach.achievement.levelId, AchievementLevelEnum.Platinum),
@@ -52,7 +52,7 @@ export class PlatinumService {
         `Platinum already achieved for ` +
           `userId = ${data.userId} ` +
           `on periodId = ${data.periodId} ` +
-          `at ${userAchievementPlatinum.achievedAt}`,
+          `at ${userAchievementPlatinum.achievedAt.toISOString()}`,
       );
       return;
     }
@@ -66,7 +66,7 @@ export class PlatinumService {
       .where(
         and(
           ne(ach.achievement.levelId, AchievementLevelEnum.Platinum),
-          eq(ach.achievement.active, true),
+          isNull(ach.achievement.inactivatedAt),
         ),
       );
     const userAchievementQuery = this.drizzle
@@ -81,11 +81,11 @@ export class PlatinumService {
       )
       .where(
         and(
-          eq(usr.achievement.active, true),
+          isNull(usr.achievement.inactivatedAt),
           eq(usr.achievement.userId, data.userId),
           eq(usr.achievement.periodId, data.periodId),
           ne(ach.achievement.levelId, AchievementLevelEnum.Platinum),
-          eq(ach.achievement.active, true),
+          isNull(ach.achievement.inactivatedAt),
         ),
       );
     const countResults = await unionAll(
@@ -111,7 +111,7 @@ export class PlatinumService {
     const platinum = await this.drizzle.query.achAchievement.findFirst({
       where: and(
         eq(ach.achievement.levelId, AchievementLevelEnum.Platinum),
-        eq(ach.achievement.active, true),
+        isNull(ach.achievement.inactivatedAt),
       ),
       columns: {
         id: true,

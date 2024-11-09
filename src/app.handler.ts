@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { ach, cfg, Drizzle, usr } from '@st-achievements/database';
 import { getCorrelationId, safeAsync } from '@st-api/core';
 import {
@@ -14,6 +13,7 @@ import {
   inArray,
   InferInsertModel,
   InferSelectModel,
+  isNull,
   sql,
 } from 'drizzle-orm';
 
@@ -49,6 +49,7 @@ import { WorkoutTypeConditionAllOfOperator } from './query-operator/workout-type
 import { WorkoutTypeConditionAnyOfOperator } from './query-operator/workout-type-condition-any-of.operator.js';
 import { WorkoutTypeConditionExclusiveAnyOfOperator } from './query-operator/workout-type-condition-exclusive-any-of.operator.js';
 import { WorkoutTypeConditionExclusiveAnyOperator } from './query-operator/workout-type-condition-exclusive-any.operator.js';
+import { Injectable } from '@stlmpp/di';
 
 interface QueryBuilder {
   achievement: InferSelectModel<typeof ach.achievement>;
@@ -110,7 +111,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
     const period = await this.drizzle.query.cfgPeriod.findFirst({
       where: and(
         eq(cfg.period.id, event.data.periodId),
-        eq(cfg.period.active, true),
+        isNull(cfg.period.inactivatedAt),
       ),
     });
 
@@ -122,7 +123,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
 
     const achievements = await this.drizzle.query.achAchievement.findMany({
       where: and(
-        eq(ach.achievement.active, true),
+        isNull(ach.achievement.inactivatedAt),
         inArray(ach.achievement.id, event.data.achievementIds),
       ),
       with: {
@@ -138,7 +139,7 @@ export class AppHandler implements PubSubHandler<typeof AchievementInputDto> {
         eq(usr.achievement.userId, event.data.userId),
         eq(usr.achievement.periodId, event.data.periodId),
         inArray(usr.achievement.achAchievementId, event.data.achievementIds),
-        eq(usr.achievement.active, true),
+        isNull(usr.achievement.inactivatedAt),
       ),
       columns: {
         userId: true,

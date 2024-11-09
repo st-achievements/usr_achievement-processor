@@ -1,5 +1,5 @@
 import { usr } from '@st-achievements/database';
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 
 import { QueryOperator } from '../query/query-operator.js';
 import { Query, QueryResult } from '../query/query.type.js';
@@ -12,7 +12,7 @@ export class InitialOperator extends QueryOperator {
   execute(query: Query): Query {
     query.where.push(
       eq(usr.workout.userId, this.options.input.userId),
-      eq(usr.workout.active, true),
+      isNull(usr.workout.inactivatedAt),
       eq(usr.workout.periodId, this.options.input.periodId),
     );
     return query;

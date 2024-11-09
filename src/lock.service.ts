@@ -1,9 +1,9 @@
 import { setTimeout } from 'node:timers/promises';
 
-import { Inject, Injectable } from '@nestjs/common';
 import { StApiName } from '@st-api/core';
 import { Logger, RetryEvent } from '@st-api/firebase';
 import { Redis } from 'ioredis';
+import { Inject, Injectable } from '@stlmpp/di';
 
 @Injectable()
 export class LockService {
